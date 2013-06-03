@@ -1,4 +1,10 @@
 adjtimex-test
 =============
 
-Test of function adjtimex
+Sample programs for testing adjtimex fnction.
+
+drift.c
+--------
+Test requested adjustment and real adjustment of frequency using adjtimex.
+
+
