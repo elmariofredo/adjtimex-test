@@ -35,7 +35,7 @@ measure_clock_gettime(void) {
 	
 	granularity = diff_timespec(&tb, &ta);
 	
-	printf("\tclock_gettime %s%d ns\r\n", cnt == 1 ? "<=" : "", granularity);
+	printf("\tclock_gettime: %s%d ns\r\n", cnt == 1 ? "<=" : "", granularity);
 }
 
 void
