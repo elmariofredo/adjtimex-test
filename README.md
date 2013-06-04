@@ -20,3 +20,8 @@ which seem, that it works. Running program with one parameter with value 512.
     adjustment =  512 ppm -> measured drift =  499.661 ppm
 
 This shows that maximum allowed adjustment of adjtimex on my computer is 500 ppm.
+
+
+granularity
+-----------
+Test clock_gettime and reads time value, until it changes.
