@@ -25,3 +25,12 @@ This shows that maximum allowed adjustment of adjtimex on my computer is 500 ppm
 granularity
 -----------
 Test clock_gettime and reads time value, until it changes.
+
+Results on my PC are
+
+	granularity:
+		clock_gettime <=628 ns
+		gettimeofday: 1000 ns
+
+
+
