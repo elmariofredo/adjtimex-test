@@ -18,7 +18,7 @@
 #define Boolean int
 
 void
-adjFreq(Integer32 adj)
+adjFreq(Integer32 adj, int utm)
 {
     struct timex t;
     Integer32 tickAdj = 0;
@@ -63,19 +63,25 @@ adjFreq(Integer32 adj)
      * 512 with no tick adjustment. This is intentional - if we used residuals, we would
      * keep flapping between tick and freq which we don't want.
      */
-    if (adj > ADJ_FREQ_MAX){
-        tickAdj = -  ((long)ceil(( (adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) );
-        adj += tickAdj * tickRes;
-    } else if (adj < -ADJ_FREQ_MAX){
-        tickAdj = (long)ceil(( abs(adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) ;
-        adj += tickAdj * tickRes;
-        }
-    /* Base tick duration - 10000 when userHZ = 100 */
-    t.tick = 1E6 / userHZ;
-    /* Tick adjustment if necessary */
-    t.tick -= tickAdj;
-
-    t.modes = MOD_FREQUENCY | ADJ_TICK;
+    if (utm) {
+        if (adj > ADJ_FREQ_MAX){
+            tickAdj = -  ((long)ceil(( (adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) );
+            adj += tickAdj * tickRes;
+        } else if (adj < -ADJ_FREQ_MAX){
+            tickAdj = (long)ceil(( abs(adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) ;
+            adj += tickAdj * tickRes;
+            }
+        /* Base tick duration - 10000 when userHZ = 100 */
+        t.tick = 1E6 / userHZ;
+        /* Tick adjustment if necessary */
+        t.tick -= tickAdj;
+        
+        t.modes = MOD_FREQUENCY | ADJ_TICK;
+    } else {
+        t.modes = MOD_FREQUENCY;       
+    }
+    
+    
     t.freq = adj * ((1 << 16) / 1000);
 
     /* do calculation in double precision, instead of Integer32 */
@@ -109,8 +115,8 @@ static struct timespec tb[4];
     } while(0)
 
 void
-measure(int adj, int slp) {
-    adjFreq(0); // set clock frequency adjustment 0ppm
+measure(int adj, int slp, int utm) {
+    adjFreq(0, utm); // set clock frequency adjustment 0ppm
     printf("Measuring %d s with adjustment 0 ppm\r\n", slp);
 
     TIMESTAMP(0);
@@ -119,7 +125,7 @@ measure(int adj, int slp) {
     
     TIMESTAMP(1);
     
-    adjFreq(adj * 1000); // set clock frequency adjustment "adj" ppm
+    adjFreq(adj * 1000, utm); // set clock frequency adjustment "adj" ppm
     printf("Measuring %d s with adjustment %d ppm\r\n", slp, adj);
 
     TIMESTAMP(2);
@@ -128,7 +134,7 @@ measure(int adj, int slp) {
     
     TIMESTAMP(3);
  
-    adjFreq(0); // set clock frequency adjustment 0ppm
+    adjFreq(0, utm); // set clock frequency adjustment 0ppm
 }
 
 double
@@ -137,7 +143,7 @@ diff(struct timespec * a, struct timespec * b) {
 }
 
 void
-display(int adj, int slp) {
+display(int adj, int slp, int utm) {
     double da1, db1, da3, db3;
     
     da1 = diff(&ta[0], &ta[1]) / slp;
@@ -146,6 +152,8 @@ display(int adj, int slp) {
     da3 = diff(&ta[2], &ta[3]) / slp;
     db3 = diff(&tb[2], &tb[3]) / slp;  
     
+    printf((utm ? "" : "not "));
+    printf("using tick manipulation\r\n");
     printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", 0, (da1-db1)/1000);
     printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", adj, (da3-db3)/1000);    
 }
@@ -155,9 +163,10 @@ main(int argc, char ** argv) {
 
     int adj = 100; // ppm
     int slp = 10; // seconds
+    int utm = 1; // use tick manipulation
     
     if (argc != 3) {
-        printf("usage:\r\n\tdrift [adjustment - ppm] [measurement time - seconds]\r\n\r\n");
+        printf("usage:\r\n\tdrift [adjustment - ppm] [measurement time - seconds (default = 10)] [use tick manipulating 1/0]\r\n\r\n");
     }
     
     /* fist parameter: adjustment */
@@ -169,9 +178,14 @@ main(int argc, char ** argv) {
     if (argc > 2) {
         slp = atoi(argv[2]);
     }
+    
+    /* third parameter: use tick manipulation */
+    if (argc > 3) {
+        utm = atoi(argv[3]);
+    }
    
-    measure(adj, slp);
-    display(adj, slp);
+    measure(adj, slp, utm);
+    display(adj, slp, utm);
     
     return 0;
 }
