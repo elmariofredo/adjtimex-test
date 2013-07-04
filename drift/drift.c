@@ -12,26 +12,91 @@
  * Test frequency adjustment - adjtimex
  * 
  */
+#define ADJ_FREQ_MAX 500000
+#define servoMaxPpb (ADJ_FREQ_MAX*100)
+#define Integer32 int32_t
+#define Boolean int
 
 void
-adjFreq(int32_t adj)
+adjFreq(Integer32 adj)
 {
     struct timex t;
-    float f;
+    Integer32 tickAdj = 0;
     int result;
-    
+
+#ifdef RUNTIME_DEBUG
+    Integer32 oldAdj = adj;
+#endif
+
     memset(&t, 0, sizeof(t));
 
-    t.modes = MOD_FREQUENCY;
+    /* Get the USER_HZ value */
+    Integer32 userHZ = sysconf(_SC_CLK_TCK);
+
+    /*
+     * Get the tick resolution (ppb) - offset caused by changing the tick value by 1.
+     * The ticks value is the duration of one tick in us. So with userHz = 100  ticks per second,
+     * change of ticks by 1 (us) means a 100 us frequency shift = 100 ppm = 100000 ppb.
+     * For userHZ = 1000, change by 1 is a 1ms offset (10 times more ticks per second)
+     */
+    Integer32 tickRes = userHZ * 1000;
+
+    /* Clamp to max PPM */
+    if (adj > servoMaxPpb){
+        adj = servoMaxPpb;
+    } else if (adj < -servoMaxPpb){
+        adj = -servoMaxPpb;
+    }
+
+    /*
+     * If we are outside the standard +/-512ppm, switch to a tick + freq combination:
+     * See how many ticks we are above 512ppm, turn that into ticks and add / subtract
+     * those ticks (converted to ppb) from the freq adjustments. This is ceil'd so we will
+     * only adjust if it's enough for a tick. The offset change will not be smooth as we flip
+     * between tick and frequency, but this in general should only be happening under extreme
+     * conditions when dragging the offset down from very large values. When maxPPM is left at
+     * the default value, behaviour is the same as previously, clamped to 512ppm, but we keep
+     * tick at the base value, preventing long stabilisation times say when  we had a non-default
+     * tick value left over from a previous NTP run.
+     *
+     * With this in place, if our adj is say between 512 and 612 ppm, adj will be stuck at
+     * 512 with no tick adjustment. This is intentional - if we used residuals, we would
+     * keep flapping between tick and freq which we don't want.
+     */
+    if (adj > ADJ_FREQ_MAX){
+        tickAdj = -  ((long)ceil(( (adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) );
+        adj += tickAdj * tickRes;
+    } else if (adj < -ADJ_FREQ_MAX){
+        tickAdj = (long)ceil(( abs(adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) ;
+        adj += tickAdj * tickRes;
+        }
+    /* Base tick duration - 10000 when userHZ = 100 */
+    t.tick = 1E6 / userHZ;
+    /* Tick adjustment if necessary */
+    t.tick -= tickAdj;
+
+    t.modes = MOD_FREQUENCY | ADJ_TICK;
+    t.freq = adj * ((1 << 16) / 1000);
+
+    /* do calculation in double precision, instead of Integer32 */
+    int t1 = t.freq;
+    int t2;
     
-    f = (adj + 0.0) * (((1 << 16) + 0.0) / 1000.0);  /* could be float f = adj * 65.536 */
-    t.freq = (int)round(f);
+    float f = (adj + 0.0) * (((1 << 16) + 0.0) / 1000.0);  /* could be float f = adj * 65.536 */
+    t2 = t1;  // just to avoid compiler warning
+    t2 = (int)round(f);
+    t.freq = t2;
+//    DBG2("adjFreq: oldadj: %d, newadj: %d, tick: %d, tickadj: %d\n", oldAdj, adj,t.tick,tickAdj);
+//    DBG2("        adj is %d;  t freq is %d       (float: %f Integer32: %d)\n", adj, t.freq,  f, t1);
+    
     result = adjtimex(&t);
-    
+
     if(result < 0) {
         printf("Failed to adjtime %d ppm (%s)\r\n", adj, strerror(errno));
         exit(1);
     }
+
+    
 }
 
 
