@@ -12,6 +12,9 @@
  * Test frequency adjustment - adjtimex
  * 
  */
+// Linux: include/linux/timex.h MAXFREQ 500000 ppb
+// FreeBSD: sys/timex.h MAXFREQ 500000 ppb
+// OpenSolaris: common/sys/timex.h MAXFREQ 512000 ppb
 #define ADJ_FREQ_MAX 500000
 #define servoMaxPpb (ADJ_FREQ_MAX*100)
 #define Integer32 int32_t
@@ -70,7 +73,7 @@ adjFreq(Integer32 adj, int utm)
         } else if (adj < -ADJ_FREQ_MAX){
             tickAdj = (long)ceil(( abs(adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) ;
             adj += tickAdj * tickRes;
-            }
+        }
         /* Base tick duration - 10000 when userHZ = 100 */
         t.tick = 1E6 / userHZ;
         /* Tick adjustment if necessary */
@@ -81,20 +84,25 @@ adjFreq(Integer32 adj, int utm)
         t.modes = MOD_FREQUENCY;       
     }
     
-    
-    t.freq = adj * ((1 << 16) / 1000);
+    if (utm == 2) {
+        t.freq = 0;
+    } else {
+        t.freq = adj * ((1 << 16) / 1000);
 
-    /* do calculation in double precision, instead of Integer32 */
-    int t1 = t.freq;
-    int t2;
+        /* do calculation in double precision, instead of Integer32 */
+        int t1 = t.freq;
+        int t2;
     
-    float f = (adj + 0.0) * (((1 << 16) + 0.0) / 1000.0);  /* could be float f = adj * 65.536 */
-    t2 = t1;  // just to avoid compiler warning
-    t2 = (int)round(f);
-    t.freq = t2;
+        float f = (adj + 0.0) * (((1 << 16) + 0.0) / 1000.0);  /* could be float f = adj * 65.536 */
+        t2 = t1;  // just to avoid compiler warning
+        t2 = (int)round(f);
+        t.freq = t2;
+    }
 //    DBG2("adjFreq: oldadj: %d, newadj: %d, tick: %d, tickadj: %d\n", oldAdj, adj,t.tick,tickAdj);
 //    DBG2("        adj is %d;  t freq is %d       (float: %f Integer32: %d)\n", adj, t.freq,  f, t1);
-    
+        
+    printf("DEBUG: tickRes: %d\ttickAdj: %d\tt.freq: %ld\r\n", tickRes, tickAdj, t.freq);
+        
     result = adjtimex(&t);
 
     if(result < 0) {
@@ -116,23 +124,14 @@ static struct timespec tb[4];
 
 void
 measure(int adj, int slp, int utm) {
-    adjFreq(0, utm); // set clock frequency adjustment 0ppm
-    printf("Measuring %d s with adjustment 0 ppm\r\n", slp);
+    adjFreq(adj * 1000, utm); // set clock frequency adjustment "adj" ppm
+    printf("Measuring %d s with adjustment %d ppm\r\n", slp, adj);
 
     TIMESTAMP(0);
 
     usleep(slp * 1000000); // sleep
     
     TIMESTAMP(1);
-    
-    adjFreq(adj * 1000, utm); // set clock frequency adjustment "adj" ppm
-    printf("Measuring %d s with adjustment %d ppm\r\n", slp, adj);
-
-    TIMESTAMP(2);
-
-    usleep(slp * 1000000); // sleep
-    
-    TIMESTAMP(3);
  
     adjFreq(0, utm); // set clock frequency adjustment 0ppm
 }
@@ -149,24 +148,37 @@ display(int adj, int slp, int utm) {
     da1 = diff(&ta[0], &ta[1]) / slp;
     db1 = diff(&tb[0], &tb[1]) / slp;
 
-    da3 = diff(&ta[2], &ta[3]) / slp;
-    db3 = diff(&tb[2], &tb[3]) / slp;  
+//    da3 = diff(&ta[2], &ta[3]) / slp;
+//    db3 = diff(&tb[2], &tb[3]) / slp;  
     
-    printf((utm ? "" : "not "));
-    printf("using tick manipulation\r\n");
-    printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", 0, (da1-db1)/1000);
-    printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", adj, (da3-db3)/1000);    
+    if (utm ==0) {
+        printf("frequency adjustment only\r\n");
+    } else if (utm = 1) {
+        printf("tick and frequency adjustment\r\n");
+    } else {
+        printf("tick adjustment only\r\n");
+    }
+    printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", adj, (da1-db1)/1000);
+//    printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", 0, (da1-db1)/1000);
+//    printf("adjustment = %4d ppm -> measured drift = %8.3lf ppm\r\n", adj, (da3-db3)/1000);    
 }
 
 int
 main(int argc, char ** argv) {
 
-    int adj = 100; // ppm
+    int adj = 0; // ppm
     int slp = 10; // seconds
-    int utm = 1; // use tick manipulation
+    int utm = 0; // use tick manipulation
     
-    if (argc != 3) {
-        printf("usage:\r\n\tdrift [adjustment - ppm] [measurement time - seconds (default = 10)] [use tick manipulating 1/0]\r\n\r\n");
+    if (argc != 4) {
+        printf("usage:\r\n\tdrift [adj] [duration] [mode]\r\n");
+        printf("\t\t[adj]:      adjustment in ppm (default 0ppm)\r\n");
+        printf("\t\t[duration]: duration of measurement in seconds (default 10s)\r\n");
+        printf("\t\t[mode]:\r\n");
+        printf("\t\t            0: use frequency adjustemnt only\r\n");
+        printf("\t\t            1: use frequency adjustemnt and tick adjustment\r\n");
+        printf("\t\t            2: use tick adjustment only\r\n");
+        printf("\r\n");
     }
     
     /* fist parameter: adjustment */
