@@ -53,31 +53,32 @@ adjFreq(Integer32 adj, int utm)
 
     /*
      * If we are outside the standard +/-512ppm, switch to a tick + freq combination:
-     * See how many ticks we are above 512ppm, turn that into ticks and add / subtract
-     * those ticks (converted to ppb) from the freq adjustments. This is ceil'd so we will
-     * only adjust if it's enough for a tick. The offset change will not be smooth as we flip
-     * between tick and frequency, but this in general should only be happening under extreme
-     * conditions when dragging the offset down from very large values. When maxPPM is left at
-     * the default value, behaviour is the same as previously, clamped to 512ppm, but we keep
-     * tick at the base value, preventing long stabilisation times say when  we had a non-default
-     * tick value left over from a previous NTP run.
-     *
-     * With this in place, if our adj is say between 512 and 612 ppm, adj will be stuck at
-     * 512 with no tick adjustment. This is intentional - if we used residuals, we would
-     * keep flapping between tick and freq which we don't want.
+     * Keep moving ticks from adj to tickAdj until we get back to the normal range.
+     * The offset change will not be super smooth as we flip between tick and frequency,
+     * but this in general should only be happening under extreme conditions when dragging the
+     * offset down from very large values. When maxPPM is left at the default value, behaviour
+     * is the same as previously, clamped to 512ppm, but we keep tick at the base value,
+     * preventing long stabilisation times say when  we had a non-default tick value left over
+     * from a previous NTP run.
      */
     if (utm) {
         if (adj > ADJ_FREQ_MAX){
-            tickAdj = -  ((long)ceil(( (adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) );
-            adj += tickAdj * tickRes;
+            while (adj > ADJ_FREQ_MAX) {
+                tickAdj++;
+                adj -= tickRes;
+            }
+
         } else if (adj < -ADJ_FREQ_MAX){
-            tickAdj = (long)ceil(( abs(adj + 0.0)  - ADJ_FREQ_MAX) / (tickRes + 0.0)) ;
-            adj += tickAdj * tickRes;
+            while (adj < -ADJ_FREQ_MAX) {
+                tickAdj--;
+                adj += tickRes;
+            }
         }
+        
         /* Base tick duration - 10000 when userHZ = 100 */
         t.tick = 1E6 / userHZ;
         /* Tick adjustment if necessary */
-        t.tick -= tickAdj;
+        t.tick += tickAdj;
         
         t.modes = MOD_FREQUENCY | ADJ_TICK;
     } else {
